@@ -1,21 +1,47 @@
+import os
+import sys
+import random
+import numpy as np
 import tensorflow as tf
-from src.helper.ImageHelper import ImageHelper
+
+srcPath = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.append(srcPath)
+from helper.ImageHelper import ImageHelper
 from PIL import Image
 
+
 class ModelBase():
-    def __init__(self, modelPath=None, summaryPath=None, inputPath=None):
-        self._modelPath = modelPath
-        self._summaryPath = summaryPath
-        self._inputPath = inputPath
+    _modelName = 'base'
+
+    def __init__(self, modelDir=None, sess=None):
+        self._modelDir = modelDir + "/model"
+        self._summaryDir = modelDir + "/summary"
+        self._inputDir = modelDir + "/input"
+        self._inputPath = self._inputDir + "/record"
         self._width = 80
         self._height = 80
         self._in_channels = 3
         self._batch_size = 100
+        self._sess = sess
+        if os.path.exists(modelDir) == False:
+            os.mkdir(modelDir)
+        # if os.path.exists(self._modelDir) == False:
+        #     os.mkdir(self._modelDir)
+        if os.path.exists(self._summaryDir) == False:
+            os.mkdir(self._summaryDir)
+        if os.path.exists(self._inputDir) == False:
+            os.mkdir(self._inputDir)
+        if sess == None:
+            self._sess = tf.Session()
+        self._builder = tf.saved_model.builder.SavedModelBuilder(self._modelDir)
 
-    def BuildData(self, markPath, sourcePath, outPath):
+    def BuildData(self, markPath, sourcePath):
         markImg = Image.open(markPath)
         [markWidth, markHeight] = markImg.size
-        tfWriter = tf.python_io.TFRecordWriter(outPath + ".record")
+        outPath = self._inputDir + "/example"
+        if os.path.exists(outPath) == False:
+            os.mkdir(outPath)
+        tfWriter = tf.python_io.TFRecordWriter(self._inputPath)
         dWidth = int(self._width / 4)
         dHeight = int(self._height / 4)
         count = 0
@@ -63,6 +89,16 @@ class ModelBase():
         print("Create %d images" % count)
         tfWriter.close()
 
+    def saveModel(self):
+        self._builder.add_meta_graph_and_variables(self._sess, [self._modelName])
+
+    def restoreModel(self):
+        print("Recover model from %s" % self._modelDir)
+        if os.path.exists(self._modelDir) == False:
+            raise "Model do not exist"
+        tf.saved_model.loader.load(
+            self._sess, [self._modelName], self._modelDir)
+
     def _conv_layer(self, x, width, height,  in_channel, out_channel, name):
         with tf.name_scope(name):
             w, b = self._get_conv_var(
@@ -100,7 +136,7 @@ class ModelBase():
         return w, b
 
     def _init_data_reader(self):
-        queue = tf.train.string_input_producer([self._inputPath + ".record"])
+        queue = tf.train.string_input_producer([self._inputPath])
 
         reader = tf.TFRecordReader()
         _, serialize = reader.read(queue)

@@ -1,0 +1,6 @@
+*.pyc
+*.png
+*.jpeg
+*.jpg
+events.*
+variables.*

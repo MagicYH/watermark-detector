@@ -12,9 +12,12 @@ from PIL import Image
 
 class ModelBase():
     _modelName = 'base'
+    _saver = None
 
     def __init__(self, modelDir=None, sess=None):
         self._modelDir = modelDir + "/model"
+        self._modelFile = self._modelDir + "/model"
+        self._modelMeta = self._modelDir + "/model.meta"
         self._summaryDir = modelDir + "/summary"
         self._inputDir = modelDir + "/input"
         self._inputPath = self._inputDir + "/record"
@@ -25,15 +28,14 @@ class ModelBase():
         self._sess = sess
         if os.path.exists(modelDir) == False:
             os.mkdir(modelDir)
-        # if os.path.exists(self._modelDir) == False:
-        #     os.mkdir(self._modelDir)
+        if os.path.exists(self._modelDir) == False:
+            os.mkdir(self._modelDir)
         if os.path.exists(self._summaryDir) == False:
             os.mkdir(self._summaryDir)
         if os.path.exists(self._inputDir) == False:
             os.mkdir(self._inputDir)
         if sess == None:
             self._sess = tf.Session()
-        self._builder = tf.saved_model.builder.SavedModelBuilder(self._modelDir)
 
     def BuildData(self, markPath, sourcePath):
         markImg = Image.open(markPath)
@@ -90,14 +92,14 @@ class ModelBase():
         tfWriter.close()
 
     def saveModel(self):
-        self._builder.add_meta_graph_and_variables(self._sess, [self._modelName])
+        if self._saver == None:
+            self._saver = tf.train.Saver()
+        self._saver.save(self._sess, self._modelFile)
 
     def restoreModel(self):
         print("Recover model from %s" % self._modelDir)
-        if os.path.exists(self._modelDir) == False:
-            raise "Model do not exist"
-        tf.saved_model.loader.load(
-            self._sess, [self._modelName], self._modelDir)
+        self._saver = tf.train.import_meta_graph(self._modelMeta)
+        self._saver.restore(self._sess, self._modelFile)
 
     def _conv_layer(self, x, width, height,  in_channel, out_channel, name):
         with tf.name_scope(name):

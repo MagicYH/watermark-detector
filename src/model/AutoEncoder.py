@@ -36,33 +36,32 @@ class AutoEncoder(ModelBase):
         # summary data
         with tf.name_scope('summaries'):
             tf.summary.scalar('loss', loss)
-            # tf.summary.scalar('error', error)
             tf.summary.image('x', x, 5)
+            tf.summary.image('conv3', conv3, 5)
 
-        self._summary_merge = tf.summary.merge_all()
-        self._summary_writer = tf.summary.FileWriter(self._summaryDir, self._sess.graph)
+        merge = tf.summary.merge_all()
+        tf.add_to_collection('merge', merge)
 
-        return x, y_, train, error, loss
+        return x, y_, train, error, loss, merge
 
     def Train(self, loop_count):
         if self._inputDir is None:
             raise Exception("Input path can't be empty under train model")
 
-        # if self._modelDir is None or os.path.exists(self._modelDir) == False:
-        #     x, y_, train, error, loss = self.BuildModel()
-        #     self._sess.run(tf.global_variables_initializer())
-        # else:
-        #     self.restoreModel()
-        #     train = tf.get_collection('train')[0]
-        #     loss = tf.get_collection('loss')[0]
-        #     x = tf.get_collection('x')[0]
-        #     y_ = tf.get_collection('y_')[0]
-        #     error = tf.get_collection('error')[0]
-
-        x, y_, train, error, loss = self.BuildModel()
-        self._sess.run(tf.global_variables_initializer())
-        self._builder.add_meta_graph_and_variables(
-            self._sess, [self._modelName])
+        if self._modelDir is None or os.path.exists(self._modelMeta) == False:
+            x, y_, train, error, loss, merge = self.BuildModel()
+            self._sess.run(tf.global_variables_initializer())
+        else:
+            self.restoreModel()
+            train = tf.get_collection('train')[0]
+            loss = tf.get_collection('loss')[0]
+            x = tf.get_collection('x')[0]
+            y_ = tf.get_collection('y_')[0]
+            error = tf.get_collection('error')[0]
+            merge = tf.get_collection('merge')[0]
+        
+        summary_writer = tf.summary.FileWriter(
+            self._summaryDir, self._sess.graph)
 
         self._init_data_reader()
         for i in range(loop_count):
@@ -70,9 +69,9 @@ class AutoEncoder(ModelBase):
 
             if i % 50 == 0:
                 current_loss, summary = self._sess.run(
-                    [loss, self._summary_merge], feed_dict={x: img, y_: img})
-                self._builder.save()
-                self._summary_writer.add_summary(summary, i)
+                    [loss, merge], feed_dict={x: img, y_: img})
+                self.saveModel();
+                summary_writer.add_summary(summary, i)
                 print('step %d, training loss %g' % (i, current_loss))
             else:
                 self._sess.run([train], feed_dict={x: img, y_: img})

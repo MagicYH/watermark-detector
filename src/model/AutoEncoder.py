@@ -61,6 +61,8 @@ class AutoEncoder(ModelBase):
 
         x, y_, train, error, loss = self.BuildModel()
         self._sess.run(tf.global_variables_initializer())
+        self._builder.add_meta_graph_and_variables(
+            self._sess, [self._modelName])
 
         self._init_data_reader()
         for i in range(loop_count):
@@ -69,7 +71,7 @@ class AutoEncoder(ModelBase):
             if i % 50 == 0:
                 current_loss, summary = self._sess.run(
                     [loss, self._summary_merge], feed_dict={x: img, y_: img})
-                self.saveModel()
+                self._builder.save()
                 self._summary_writer.add_summary(summary, i)
                 print('step %d, training loss %g' % (i, current_loss))
             else:

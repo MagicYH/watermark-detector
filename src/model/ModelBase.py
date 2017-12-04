@@ -15,6 +15,9 @@ class ModelBase():
     _saver = None
 
     def __init__(self, modelDir=None, sess=None):
+        if self._modelName != None:
+            rootPath = os.path.dirname(srcPath)
+            modelDir = rootPath + "/model/" + self._modelName
         self._modelDir = modelDir + "/model"
         self._modelFile = self._modelDir + "/model"
         self._modelMeta = self._modelDir + "/model.meta"

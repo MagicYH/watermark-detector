@@ -10,15 +10,18 @@ from model.ModelBase import ModelBase
 from helper.ImageHelper import ImageHelper
 from PIL import Image
 
-class AutoEncoder(ModelBase):
-    _modelName = 'auto_encoder'
+
+class WaterReconstruct(ModelBase):
+    _modelName = 'water_reconstruct'
 
     def BuildModel(self):
         """Build identify water mark model with vgg
         """
         print("Build new model")
-        x = tf.placeholder(tf.float32, [None, self._width, self._height, self._in_channels])
-        y_ = tf.placeholder(tf.float32, [None, self._width, self._height, self._in_channels])
+        x = tf.placeholder(
+            tf.float32, [None, self._width, self._height, self._in_channels])
+        y_ = tf.placeholder(
+            tf.float32, [None, self._width, self._height, self._in_channels])
         tf.add_to_collection('x', x)
         tf.add_to_collection('y_', y_)
 
@@ -59,7 +62,7 @@ class AutoEncoder(ModelBase):
             y_ = tf.get_collection('y_')[0]
             error = tf.get_collection('error')[0]
             merge = tf.get_collection('merge')[0]
-        
+
         summary_writer = tf.summary.FileWriter(
             self._summaryDir, self._sess.graph)
 
@@ -69,12 +72,12 @@ class AutoEncoder(ModelBase):
 
             if i % 50 == 0:
                 current_loss, summary = self._sess.run(
-                    [loss, merge], feed_dict={x: img, y_: img})
-                self.saveModel();
+                    [loss, merge], feed_dict={x: img, y_: _y})
+                self.saveModel()
                 summary_writer.add_summary(summary, i)
                 print('step %d, training loss %g' % (i, current_loss))
             else:
-                self._sess.run([train], feed_dict={x: img, y_: img})
+                self._sess.run([train], feed_dict={x: img, y_: _y})
 
     def BuildData(self, markPath, sourcePath):
         markImg = Image.open(markPath)
@@ -103,20 +106,66 @@ class AutoEncoder(ModelBase):
                     regin = (x * dWidth, y * dHeight, x * dWidth +
                              self._width, y * dHeight + self._height)
                     tmpImg = img.crop(regin)
-                    tmpImg = self._addWater(tmpImg, markImg)
+                    tmpImg, label = self._addWater(tmpImg, markImg)
                     count = count + 1
 
                     if count % 99 == 1:
                         tmpImg.save(outPath + "/" + str(count) + ".png")
+                        label.save(outPath + "/" + str(count) + "_label.png")
 
                     if self._in_channels == 1:
                         tmpImg = tmpImg.convert("L")
+                        label = label.convert("L")
 
                     example = tf.train.Example(features=tf.train.Features(feature={
-                        "label": tf.train.Feature(int64_list=tf.train.Int64List(value=[1])),
+                        "label": tf.train.Feature(bytes_list=tf.train.BytesList(value=[label.tobytes()])),
                         'img': tf.train.Feature(bytes_list=tf.train.BytesList(value=[tmpImg.tobytes()]))
                     }))
                     tfWriter.write(example.SerializeToString())
 
         print("Create %d images" % count)
         tfWriter.close()
+
+    def _init_data_reader(self):
+        queue = tf.train.string_input_producer([self._inputPath])
+
+        reader = tf.TFRecordReader()
+        _, serialize = reader.read(queue)
+
+        features = tf.parse_single_example(serialize, features={
+            'label': tf.FixedLenFeature([], tf.string),
+            'img': tf.FixedLenFeature([], tf.string),
+        })
+
+        img = tf.decode_raw(features['img'], tf.uint8)
+        img = tf.reshape(img, [self._width, self._height, self._in_channels])
+        img = tf.cast(img, tf.float32)
+
+        label = tf.decode_raw(features['label'], tf.uint8)
+        label = tf.reshape(label, [self._width, self._height, self._in_channels])
+        label = tf.cast(label, tf.float32)
+        self._img, self._label = tf.train.shuffle_batch(
+            [img, label], batch_size=self._batch_size, capacity=2000, min_after_dequeue=500)
+
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=self._sess, coord=coord)
+
+    def _next_batch(self):
+        img, label = self._sess.run([self._img, self._label])
+        return img, label
+
+    def _addWater(self, tmpImg, markImg):
+        percent = random.randint(90, 110)
+
+        [markWidth, markHeight] = markImg.size
+        width = int(markWidth * percent / 100)
+        height = int(markHeight * percent / 100)
+
+        x1 = random.randint(0, self._width - width - 1)
+        y1 = random.randint(0, self._height - height - 1)
+
+        x2 = x1 + width
+        y2 = y1 + height
+
+        purage = Image.new('RGB', (self._width, self._height))
+        return ImageHelper.AddWaterWithImg(tmpImg, markImg, x1, y1, x2, y2), ImageHelper.AddWaterWithImg(purage, markImg, x1, y1, x2, y2)
